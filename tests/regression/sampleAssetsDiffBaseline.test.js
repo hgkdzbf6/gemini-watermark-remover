@@ -30,6 +30,83 @@ const MIME_TYPES = {
     '.webp': 'image/webp'
 };
 
+const LOSSY_BASELINE_TOLERANCE = Object.freeze({
+    maxAvgAbsDeltaPerChannel: 1.5,
+    maxChannelDelta: 24
+});
+
+function isLossyMimeType(mimeType) {
+    return mimeType === 'image/jpeg' || mimeType === 'image/webp';
+}
+
+function isBaselineDiffAcceptable({ compareMode, mimeType, diff }) {
+    if (diff?.sizeMismatch) return false;
+    if (compareMode !== 'encoded' || !isLossyMimeType(mimeType)) {
+        return diff?.changedPixels === 0;
+    }
+
+    return diff.avgAbsDeltaPerChannel <= LOSSY_BASELINE_TOLERANCE.maxAvgAbsDeltaPerChannel &&
+        diff.maxChannelDelta <= LOSSY_BASELINE_TOLERANCE.maxChannelDelta;
+}
+
+function formatDiffFailureMessage(result) {
+    return `${result.fileName}: baseline mismatch vs ${result.baselineName}, ` +
+        `compareMode=${result.compareMode}, mimeType=${result.mimeType}, ` +
+        `changedPixels=${result.diff.changedPixels}, changedRatio=${result.diff.changedRatio}, ` +
+        `avgAbsDelta=${result.diff.avgAbsDeltaPerChannel}, maxDelta=${result.diff.maxChannelDelta}, ` +
+        `applied=${result.applied}, source=${result.source}`;
+}
+
+test('isBaselineDiffAcceptable should require exact match for lossless baselines', () => {
+    assert.equal(
+        isBaselineDiffAcceptable({
+            compareMode: 'encoded',
+            mimeType: 'image/png',
+            diff: {
+                sizeMismatch: false,
+                changedPixels: 1,
+                avgAbsDeltaPerChannel: 0.01,
+                maxChannelDelta: 1
+            }
+        }),
+        false
+    );
+});
+
+test('isBaselineDiffAcceptable should allow tiny lossy encode drift', () => {
+    assert.equal(
+        isBaselineDiffAcceptable({
+            compareMode: 'encoded',
+            mimeType: 'image/webp',
+            diff: {
+                sizeMismatch: false,
+                changedPixels: 1200,
+                changedRatio: 0.8,
+                avgAbsDeltaPerChannel: 0.9,
+                maxChannelDelta: 12
+            }
+        }),
+        true
+    );
+});
+
+test('isBaselineDiffAcceptable should reject meaningful lossy regression drift', () => {
+    assert.equal(
+        isBaselineDiffAcceptable({
+            compareMode: 'encoded',
+            mimeType: 'image/jpeg',
+            diff: {
+                sizeMismatch: false,
+                changedPixels: 3000,
+                changedRatio: 1,
+                avgAbsDeltaPerChannel: 2.4,
+                maxChannelDelta: 40
+            }
+        }),
+        false
+    );
+});
+
 function startStaticServer(rootDir) {
     return new Promise((resolve, reject) => {
         const server = createServer(async (req, res) => {
@@ -207,6 +284,8 @@ test('sample assets should match committed fix baselines after processing', asyn
                 results.push({
                     fileName: item.fileName,
                     baselineName: item.baselineName,
+                    mimeType: item.mimeType,
+                    compareMode: item.compareMode,
                     applied: result.meta.applied,
                     source: result.meta.source,
                     diff: measureImageDiff(actualImageData, baselineImageData)
@@ -223,14 +302,7 @@ test('sample assets should match committed fix baselines after processing', asyn
 
         for (const result of results) {
             assert.equal(result.diff.sizeMismatch, false, `${result.fileName}: image size mismatch vs ${result.baselineName}`);
-            assert.equal(
-                result.diff.changedPixels,
-                0,
-                `${result.fileName}: expected exact baseline match vs ${result.baselineName}, ` +
-                `changedPixels=${result.diff.changedPixels}, changedRatio=${result.diff.changedRatio}, ` +
-                `avgAbsDelta=${result.diff.avgAbsDeltaPerChannel}, maxDelta=${result.diff.maxChannelDelta}, ` +
-                `applied=${result.applied}, source=${result.source}`
-            );
+            assert.equal(isBaselineDiffAcceptable(result), true, formatDiffFailureMessage(result));
         }
     } finally {
         await browser.close();
