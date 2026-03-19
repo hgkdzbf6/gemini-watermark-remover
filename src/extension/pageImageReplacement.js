@@ -766,9 +766,10 @@ export function showProcessingOverlay(
     if (existingState.hideTimerId !== null && typeof clearTimeoutImpl === 'function') {
       clearTimeoutImpl(existingState.hideTimerId);
       existingState.hideTimerId = null;
-      if (existingState.overlay?.style && typeof existingState.overlay.style === 'object') {
-        existingState.overlay.style.opacity = '1';
-      }
+      existingState.hideSequence += 1;
+    }
+    if (existingState.overlay?.style && typeof existingState.overlay.style === 'object') {
+      existingState.overlay.style.opacity = '1';
     }
     return existingState.overlay;
   }
@@ -776,8 +777,11 @@ export function showProcessingOverlay(
   const overlay = createProcessingOverlayElement(createElement);
   const previousFilter = typeof imageElement?.style?.filter === 'string' ? imageElement.style.filter : '';
   const previousContainerPosition = typeof container?.style?.position === 'string' ? container.style.position : '';
+  const didOverrideContainerPosition = Boolean(
+    container.style && (!container.style.position || container.style.position === 'static')
+  );
 
-  if (container.style && (!container.style.position || container.style.position === 'static')) {
+  if (didOverrideContainerPosition) {
     container.style.position = 'relative';
   }
   container.appendChild(overlay);
@@ -794,7 +798,9 @@ export function showProcessingOverlay(
     container,
     previousFilter,
     previousContainerPosition,
-    hideTimerId: null
+    didOverrideContainerPosition,
+    hideTimerId: null,
+    hideSequence: 0
   });
 
   return overlay;
@@ -804,13 +810,22 @@ export function hideProcessingOverlay(
   imageElement,
   {
     removeImmediately = false,
-    setTimeoutImpl = globalThis.setTimeout?.bind(globalThis) || null
+    setTimeoutImpl = globalThis.setTimeout?.bind(globalThis) || null,
+    clearTimeoutImpl = globalThis.clearTimeout?.bind(globalThis) || null
   } = {}
 ) {
   const state = processingOverlayState.get(imageElement);
   if (!state) return;
+  const nextHideSequence = state.hideSequence + 1;
+  state.hideSequence = nextHideSequence;
 
   const cleanup = () => {
+    if (processingOverlayState.get(imageElement) !== state) {
+      return;
+    }
+    if (state.hideSequence !== nextHideSequence) {
+      return;
+    }
     if (state.overlay?.parentNode && typeof state.overlay.parentNode.removeChild === 'function') {
       state.overlay.parentNode.removeChild(state.overlay);
     }
@@ -820,17 +835,30 @@ export function hideProcessingOverlay(
     if (imageElement?.dataset) {
       delete imageElement.dataset[PROCESSING_VISUAL_DATA_KEY];
     }
-    if (state.container?.style && typeof state.container.style === 'object') {
+    if (
+      state.didOverrideContainerPosition
+      && state.container?.style
+      && typeof state.container.style === 'object'
+      && state.container.style.position === 'relative'
+    ) {
       state.container.style.position = state.previousContainerPosition;
     }
+    state.hideTimerId = null;
     processingOverlayState.delete(imageElement);
   };
 
   if (removeImmediately || typeof setTimeoutImpl !== 'function') {
+    if (state.hideTimerId !== null && typeof clearTimeoutImpl === 'function') {
+      clearTimeoutImpl(state.hideTimerId);
+      state.hideTimerId = null;
+    }
     cleanup();
     return;
   }
 
+  if (state.hideTimerId !== null && typeof clearTimeoutImpl === 'function') {
+    clearTimeoutImpl(state.hideTimerId);
+  }
   if (state.overlay?.style && typeof state.overlay.style === 'object') {
     state.overlay.style.opacity = '0';
   }

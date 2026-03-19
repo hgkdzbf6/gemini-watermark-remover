@@ -449,6 +449,58 @@ test('hideProcessingOverlay should fade the overlay out before removing it by de
   assert.equal(image.dataset.gwrProcessingVisual, undefined);
 });
 
+test('stale hide callback should not remove an overlay that has been shown again', () => {
+  const container = createMockElement('div');
+  const image = createMockElement('img');
+  const timers = [];
+
+  showProcessingOverlay(image, {
+    container,
+    createElement: createMockElement
+  });
+
+  hideProcessingOverlay(image, {
+    setTimeoutImpl(callback, delay) {
+      timers.push({ callback, delay });
+      return timers.length;
+    }
+  });
+
+  showProcessingOverlay(image, {
+    container,
+    createElement: createMockElement,
+    clearTimeoutImpl() {
+      // Simulate a timer that can no longer be reliably cancelled.
+    }
+  });
+
+  assert.equal(container.children.length, 1);
+  assert.equal(container.children[0].style.opacity, '1');
+
+  timers[0].callback();
+
+  assert.equal(container.children.length, 1);
+  assert.equal(image.dataset.gwrProcessingVisual, 'true');
+});
+
+test('hideProcessingOverlay should not overwrite container position changed by page code during processing', () => {
+  const container = createMockElement('div');
+  const image = createMockElement('img');
+
+  showProcessingOverlay(image, {
+    container,
+    createElement: createMockElement
+  });
+
+  container.style.position = 'sticky';
+
+  hideProcessingOverlay(image, {
+    removeImmediately: true
+  });
+
+  assert.equal(container.style.position, 'sticky');
+});
+
 test('waitForRenderableImageSize should wait for preview images that become renderable on the next frame', async () => {
   const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
   const image = {
