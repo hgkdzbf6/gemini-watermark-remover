@@ -87,6 +87,8 @@ Current userscript boundaries:
 - no injected per-image controls
 - no popup UI or bulk action surface
 - page previews and native copy/download flows are both processed when the source image is reachable
+- preview images keep the original visible while processing, with a subdued `Processing...` overlay
+- if preview processing fails, the original page image stays visible and usable
 
 ### Chrome Extension (Development Build)
 
@@ -209,6 +211,10 @@ pnpm test:extension-smoke
 Regression tests include image fixtures from `src/assets/samples/`.
 Source samples stay in git.
 Local `*-fix.*` files are optional snapshot outputs for manual regression checks and are intentionally not tracked by git.
+
+## Release Notes
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and [RELEASE.md](RELEASE.md) for the local release checklist.
 
 ## How Gemini Watermark Removal Works
 
