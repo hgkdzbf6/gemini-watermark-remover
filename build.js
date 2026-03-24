@@ -186,6 +186,18 @@ const workerCtx = await esbuild.context({
   sourcemap: !isProd,
 });
 
+// Build Raphael watermark module
+const raphaelCtx = await esbuild.context({
+  ...commonConfig,
+  entryPoints: ['src/core/raphael/index.js'],
+  outfile: 'dist/raphael-watermark-remover.js',
+  platform: 'browser',
+  format: 'esm',
+  target: ['es2020'],
+  banner: { js: jsBanner },
+  sourcemap: !isProd,
+});
+
 // Build inline worker code for userscript (Blob Worker)
 const userscriptWorkerBuild = await esbuild.build({
   ...commonConfig,
@@ -222,6 +234,7 @@ if (isProd) {
   await Promise.all([
     websiteCtx.rebuild(),
     workerCtx.rebuild(),
+    raphaelCtx.rebuild(),
     userscriptCtx.rebuild()
   ]);
   console.log('✅ Build complete!');
@@ -230,6 +243,7 @@ if (isProd) {
   await Promise.all([
     websiteCtx.watch(),
     workerCtx.watch(),
+    raphaelCtx.watch(),
     userscriptCtx.watch()
   ]);
 

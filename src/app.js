@@ -391,9 +391,7 @@ function createImageCard(item) {
     imageList.appendChild(card);
     const imageName = card.querySelector('.image-name');
     if (imageName) {
-        const safeImageName = typeof item.name === 'string' ? item.name : '';
-        imageName.textContent = safeImageName;
-        imageName.title = safeImageName;
+        imageName.textContent = item.name;
     }
 }
 
